@@ -21,7 +21,7 @@
                 <th></th>
               </thead>
               <tbody>
-                <tr v-bind:class="{'table-info': isActive===index }" v-for="(m, index) in orderedItems" :key="index">
+                <tr v-bind:class="{'table-info': isActive === m._id }" v-for="(m) in orderedItems" :key="m._id">
                     <td>
                       <div v-if="m.speed === 0 && m.since === 0">
                         <i class="fas fa-circle mr-2" style="color:red"></i>
@@ -35,13 +35,13 @@
                     <td style="text-align:left">{{m.key}}</td>
                     <!--td style="font-size:13px">{{m.since}}</td-->
                     <td>
-                      <button v-if="isActive===index" v-on:click="chooseUnity(m, index)" type="button" class="btn btn-info btn-sm">
-                        <b-icon class="reff" icon="hand-index" font-scale="1"></b-icon>
-                      </button>
-                      <button v-else v-on:click="chooseUnity(m, index)" type="button" class="btn btn-outline-info btn-sm">
-                        <b-icon class="reff" icon="hand-index" font-scale="1"></b-icon>
-                      </button>
-                    </td>
+                    <button v-if="isActive === m._id" v-on:click="chooseUnity(m)" type="button" class="btn btn-info btn-sm">
+                   <b-icon class="reff" icon="hand-index" font-scale="1"></b-icon>
+                   </button>
+                   <button v-else v-on:click="chooseUnity(m)" type="button" class="btn btn-outline-info btn-sm">
+                    <b-icon class="reff" icon="hand-index" font-scale="1"></b-icon>
+                    </button>
+                </td>
                 </tr>
               </tbody>
             </table>
@@ -129,7 +129,7 @@
 
           <!-- Mapa Here -->
           <div class="col-md-12" style="margin-top: -150px;position: inherit;">
-            <HereMap ref="map" :center="center" :zoom="zoom"/>
+            <HereMap ref="map" :center="center" :zoom="zoom" @marker-clicked="onMarkerClicked"/>
           </div>
         </div>
 
@@ -237,7 +237,7 @@ export default {
         realTime: true,
         center: { lat: 23.8542214, lng: -102.256306 },
         zoom: 5.5,
-        isActive: false,
+        isActive: null,
         infoModal: false,
         commandsModal: false,
         pointers: [],
@@ -361,41 +361,63 @@ orderedItems(){
         }
       });
     },
-async chooseUnity(data, indx) {
-  if (this.selectedUnits.includes(data)) {
-    // Cuando se deselecciona una unidad, no mostrar el mensaje
+    async chooseUnity(data, fromMarker = false) {
+  if (this.selectedUnits.includes(data) && !fromMarker) {
+    // Si la unidad ya está seleccionada y el clic viene de la lista, la quitamos
     this.selectedUnits = this.selectedUnits.filter(unit => unit !== data);
     this.map.removeObjectsByKey(data.key);
+    if (this.isActive === data._id) {
+      this.isActive = null;
+    }
   } else {
-    // Cuando se selecciona una nueva unidad, mostrar el mensaje
-    this.$swal({
-      title: "Cargando coordenadas!",
-      icon: "warning",
-      confirmButtonColor: "#3085d6",
-      confirmButtonText: "Enterado",
-    }).then((result) => {
-      if(result.isConfirmed){
-        this.commandsModal = false;
+    // Si la unidad no está seleccionada o el clic viene del marcador, la añadimos/seleccionamos
+    if (this.selectedUnits.length < 5 || this.selectedUnits.includes(data)) {
+      if (!this.selectedUnits.includes(data)) {
+        this.selectedUnits.push(data);
       }
-    });
-    console.log('data --> ', data);
-    this.map = this.$refs.map;
-    this.indicadores = {
-      velocidad: 0,
-      distancia: 0,
-      movimiento: '0min, 0seg',
-      fecha: this.$moment(),
-    };
+      this.isActive = data._id;
 
-    if (this.selectedUnits.length < 5) {
-      this.selectedUnits.push(data);
+      // Mostrar el mensaje de carga solo si no viene del marcador
+      if (!fromMarker) {
+        this.$swal({
+          title: "Cargando coordenadas!",
+          icon: "warning",
+          confirmButtonColor: "#3085d6",
+          confirmButtonText: "Enterado",
+        }).then((result) => {
+          if(result.isConfirmed){
+            this.commandsModal = false;
+          }
+        });
+      }
+
+      // Actualizar el mapa y los indicadores
+      this.map = this.$refs.map;
+      this.indicadores = {
+        velocidad: data.speed || 0,
+        distancia: 0,
+        movimiento: data.since || '0min, 0seg',
+        fecha: data.fecha || this.$moment(),
+      };
+
+      // Centrar el mapa en la unidad seleccionada
+      if (data.gpsData) {
+        this.center = { lat: data.gpsData.lat, lng: data.gpsData.lng };
+        this.map.setCenter();
+      }
     } else {
       this.$swal('Atención', 'No puedes seleccionar más de 5 unidades', 'warning');
     }
   }
 
-  this.isActive = indx;
   this.realTime = true;
+},
+
+onMarkerClicked(key) {
+  const clickedUnit = this.items.find(item => item.key === key);
+  if (clickedUnit) {
+    this.chooseUnity(clickedUnit, true);
+  }
 }
   },
   components: {
